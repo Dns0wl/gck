@@ -68,6 +68,28 @@ body {
     width: 55mm;
     height: 55mm;
 }
+.manual-order {
+    display: flex;
+    justify-content: space-between;
+    gap: 12mm;
+    background: rgba(238, 240, 248, 0.7);
+    border-radius: 8mm;
+    padding: 6mm 10mm;
+    margin-bottom: 12mm;
+}
+.manual-order span {
+    display: block;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7a7f8d;
+}
+.manual-order strong {
+    font-size: 14pt;
+    margin-top: 3mm;
+    display: block;
+    color: #1f1f24;
+}
 .manual-content {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
