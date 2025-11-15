@@ -35,6 +35,8 @@ class HWMB_Data_Source
             '{{version}}',
             '{{qr_svg}}',
             '{{logo}}',
+            '{{customer_name}}',
+            '{{order_date}}',
         ];
     }
 
@@ -88,7 +90,7 @@ class HWMB_Data_Source
         }
     }
 
-    public function build_payload(int $post_id): array
+    public function build_payload(int $post_id, array $overrides = []): array
     {
         $post = get_post($post_id);
         if (! $post || 'serialnumber' !== $post->post_type) {
@@ -96,14 +98,13 @@ class HWMB_Data_Source
         }
 
         $settings = hwmb()->files->get_settings();
-        $meta     = array_map('maybe_unserialize', get_post_meta($post_id));
-        $serial   = get_post_meta($post_id, 'serial_code', true) ?: $post->post_title;
+        $serial   = $this->get_field_value($post_id, ['serial_code', 'serial', 'serialnumber_serial', 'serialnumber'], $post->post_title);
 
         $tokens = [
             '{{transaction_date}}' => $this->format_date(get_post_meta($post_id, 'transaction_date', true)),
             '{{product_name}}'     => $this->format_title(get_post_meta($post_id, 'product_name', true) ?: $post->post_title),
-            '{{material}}'         => $this->safe_text(get_post_meta($post_id, 'material', true)),
-            '{{leather_type}}'     => $this->safe_text(get_post_meta($post_id, 'leather_type', true)),
+            '{{material}}'         => $this->get_field_value($post_id, ['material', 'material_type', 'product_material']),
+            '{{leather_type}}'     => $this->get_field_value($post_id, ['leather_type', 'leather', 'leather_type_name']),
             '{{color}}'            => $this->safe_text(get_post_meta($post_id, 'color', true)),
             '{{size}}'             => $this->safe_text(get_post_meta($post_id, 'size', true)),
             '{{serial_code}}'      => $serial,
@@ -114,6 +115,8 @@ class HWMB_Data_Source
             '{{version}}'          => HWMB_VERSION,
             '{{qr_svg}}'           => hwmb()->qr->generate_svg(trailingslashit($settings['qr_base']) . rawurlencode($serial)),
             '{{logo}}'             => $settings['logo'],
+            '{{customer_name}}'    => '',
+            '{{order_date}}'       => '',
         ];
 
         foreach ($this->get_mappings() as $token => $map) {
@@ -137,7 +140,29 @@ class HWMB_Data_Source
             }
         }
 
+        if ($overrides) {
+            foreach ($overrides as $key => $value) {
+                $token_key = '{{' . trim($key, '{}') . '}}';
+                if (! array_key_exists($token_key, $tokens)) {
+                    continue;
+                }
+                $tokens[$token_key] = $this->safe_text((string) $value);
+            }
+        }
+
         return $tokens;
+    }
+
+    public function get_field_value(int $post_id, array $keys, string $default = ''): string
+    {
+        foreach ($keys as $key) {
+            $value = get_post_meta($post_id, $key, true);
+            if ('' !== $value && null !== $value) {
+                return $this->safe_text((string) $value);
+            }
+        }
+
+        return $this->safe_text($default);
     }
 
     private function format_date(?string $value): string
