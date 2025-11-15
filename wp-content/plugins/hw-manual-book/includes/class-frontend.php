@@ -43,10 +43,12 @@ class HWMB_Frontend
         wp_enqueue_style('hwmb-base', HWMB_PLUGIN_URL . 'assets/css/base.css', [], HWMB_VERSION);
         wp_enqueue_script('hwmb-mnb', HWMB_PLUGIN_URL . 'assets/js/mnb.js', [], HWMB_VERSION, true);
         wp_script_add_data('hwmb-mnb', 'type', 'module');
+        $can_manage = current_user_can('edit_serialnumbers') || current_user_can('edit_posts');
+
         wp_localize_script('hwmb-mnb', 'HWMBApp', [
-            'rest'   => esc_url_raw(rest_url('hw-manual/v1')),
-            'nonce'  => wp_create_nonce('wp_rest'),
-            'canBuild' => current_user_can('edit_serialnumbers'),
+            'rest'     => esc_url_raw(rest_url('hw-manual/v1')),
+            'nonce'    => wp_create_nonce('wp_rest'),
+            'canBuild' => $can_manage,
         ]);
     }
 
