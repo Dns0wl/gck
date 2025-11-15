@@ -164,7 +164,10 @@ class HWMB_Files
         if (! isset($_GET['hwmb_pdf'])) { // phpcs:ignore
             return;
         }
-        $relative = sanitize_text_field(wp_unslash($_GET['hwmb_pdf'])); // phpcs:ignore
+
+        $relative_param = wp_unslash($_GET['hwmb_pdf']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $relative       = rawurldecode($relative_param);
+        $relative       = sanitize_text_field($relative);
         $expires  = isset($_GET['exp']) ? (int) $_GET['exp'] : 0; // phpcs:ignore
         $sig      = isset($_GET['sig']) ? sanitize_text_field(wp_unslash($_GET['sig'])) : ''; // phpcs:ignore
 
