@@ -25,6 +25,17 @@
         </div>
     </section>
 
+    <section class="manual-order">
+        <div>
+            <span>Atas Nama</span>
+            <strong>{{customer_name}}</strong>
+        </div>
+        <div>
+            <span>Tanggal Pemesanan</span>
+            <strong>{{order_date}}</strong>
+        </div>
+    </section>
+
     <section class="manual-content">
         <div class="manual-block">
             <h3>Genuine Leather</h3>

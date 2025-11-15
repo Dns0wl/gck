@@ -37,6 +37,8 @@ require_once HWMB_PLUGIN_DIR . 'includes/class-cli.php';
 if (! class_exists('HWMB_Plugin')) {
     final class HWMB_Plugin
     {
+        public const REWRITE_VERSION = '20240604';
+
         public static ?HWMB_Plugin $instance = null;
         public HWMB_Logger $logger;
         public HWMB_Files $files;
@@ -84,7 +86,21 @@ if (! class_exists('HWMB_Plugin')) {
             $this->scheduler->init();
             $this->cli->init();
 
+            add_action('init', [$this, 'maybe_flush_rewrite'], 20);
+
             add_action('save_post_serialnumber', [$this, 'queue_generation'], 10, 3);
+        }
+
+        public function maybe_flush_rewrite(): void
+        {
+            $stored = get_option('hwmb_rewrite_version');
+            if ($stored === self::REWRITE_VERSION) {
+                return;
+            }
+
+            HWMB_Frontend::register_rewrite();
+            flush_rewrite_rules(false);
+            update_option('hwmb_rewrite_version', self::REWRITE_VERSION);
         }
 
         public function queue_generation(int $post_id, WP_Post $post, bool $update): void
@@ -106,12 +122,14 @@ if (! class_exists('HWMB_Plugin')) {
             HWMB_Frontend::register_rewrite();
             HWMB_Scheduler::register_cron();
             flush_rewrite_rules();
+            update_option('hwmb_rewrite_version', self::REWRITE_VERSION);
         }
 
         public static function deactivate(): void
         {
             HWMB_Scheduler::clear_cron();
             flush_rewrite_rules();
+            delete_option('hwmb_rewrite_version');
         }
     }
 }
