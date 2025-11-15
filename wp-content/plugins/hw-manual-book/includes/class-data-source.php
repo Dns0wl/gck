@@ -35,6 +35,8 @@ class HWMB_Data_Source
             '{{version}}',
             '{{qr_svg}}',
             '{{logo}}',
+            '{{customer_name}}',
+            '{{order_date}}',
         ];
     }
 
@@ -88,7 +90,7 @@ class HWMB_Data_Source
         }
     }
 
-    public function build_payload(int $post_id): array
+    public function build_payload(int $post_id, array $overrides = []): array
     {
         $post = get_post($post_id);
         if (! $post || 'serialnumber' !== $post->post_type) {
@@ -114,6 +116,8 @@ class HWMB_Data_Source
             '{{version}}'          => HWMB_VERSION,
             '{{qr_svg}}'           => hwmb()->qr->generate_svg(trailingslashit($settings['qr_base']) . rawurlencode($serial)),
             '{{logo}}'             => $settings['logo'],
+            '{{customer_name}}'    => '',
+            '{{order_date}}'       => '',
         ];
 
         foreach ($this->get_mappings() as $token => $map) {
@@ -134,6 +138,16 @@ class HWMB_Data_Source
             }
             if ($fallback && '' === $tokens[$token]) {
                 $tokens[$token] = $fallback;
+            }
+        }
+
+        if ($overrides) {
+            foreach ($overrides as $key => $value) {
+                $token_key = '{{' . trim($key, '{}') . '}}';
+                if (! array_key_exists($token_key, $tokens)) {
+                    continue;
+                }
+                $tokens[$token_key] = $this->safe_text((string) $value);
             }
         }
 

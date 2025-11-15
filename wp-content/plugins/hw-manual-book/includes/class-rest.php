@@ -55,6 +55,18 @@ class HWMB_REST
                 return current_user_can('edit_serialnumbers');
             },
         ]);
+
+        register_rest_route('hw-manual/v1', '/process/(?P<id>\d+)', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => [$this, 'process_item'],
+            'permission_callback' => function () {
+                return current_user_can('edit_serialnumbers');
+            },
+            'args'                => [
+                'customer_name' => ['sanitize_callback' => 'sanitize_text_field', 'required' => true],
+                'order_date'    => ['sanitize_callback' => 'sanitize_text_field', 'required' => true],
+            ],
+        ]);
     }
 
     public function list_items(WP_REST_Request $request): WP_REST_Response
@@ -137,6 +149,39 @@ class HWMB_REST
             return new WP_REST_Response(['success' => true, 'data' => $result]);
         } catch (Throwable $e) {
             $this->logger->log('REST build failed: ' . $e->getMessage(), 'error');
+            return new WP_REST_Response(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function process_item(WP_REST_Request $request): WP_REST_Response
+    {
+        $nonce = $request->get_header('X-WP-Nonce');
+        if (! wp_verify_nonce($nonce, 'wp_rest')) {
+            return new WP_REST_Response(['message' => __('Invalid nonce', 'hw-manual-book')], 403);
+        }
+
+        $post_id       = (int) $request['id'];
+        $customer_name = sanitize_text_field((string) $request->get_param('customer_name'));
+        $order_date    = sanitize_text_field((string) $request->get_param('order_date'));
+
+        if (empty($customer_name) || empty($order_date)) {
+            return new WP_REST_Response(['message' => __('Customer name and order date are required.', 'hw-manual-book')], 400);
+        }
+
+        $overrides = [
+            'customer_name' => $customer_name,
+            'order_date'    => $order_date,
+        ];
+
+        try {
+            $result = $this->renderer->build_pdf($post_id, '', $overrides, false);
+            return new WP_REST_Response([
+                'success'  => true,
+                'filename' => $result['filename'] ?? 'manual-book.pdf',
+                'pdf'      => base64_encode($result['binary']),
+            ]);
+        } catch (Throwable $e) {
+            $this->logger->log('REST process failed: ' . $e->getMessage(), 'error');
             return new WP_REST_Response(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
