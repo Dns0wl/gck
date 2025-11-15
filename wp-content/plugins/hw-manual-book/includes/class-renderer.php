@@ -20,9 +20,9 @@ class HWMB_Renderer
         $this->logger      = $logger;
     }
 
-    public function render_html(int $post_id, string $template_id = ''): string
+    public function render_html(int $post_id, string $template_id = '', array $overrides = []): string
     {
-        $tokens   = $this->data_source->build_payload($post_id);
+        $tokens   = $this->data_source->build_payload($post_id, $overrides);
         $template = $this->data_source->get_template($template_id);
         $html     = $template['html'] ?? '';
         $css      = $template['css'] ?? '';
@@ -39,9 +39,9 @@ class HWMB_Renderer
         return '<style>' . $css . '</style>' . $html;
     }
 
-    public function build_pdf(int $post_id, string $template_id = ''): array
+    public function build_pdf(int $post_id, string $template_id = '', array $overrides = [], bool $persist = true): array
     {
-        $tokens   = $this->data_source->build_payload($post_id);
+        $tokens   = $this->data_source->build_payload($post_id, $overrides);
         $template = $this->data_source->get_template($template_id);
         if (! $tokens) {
             throw new RuntimeException(__('Unable to build payload for PDF.', 'hw-manual-book'));
@@ -65,7 +65,7 @@ class HWMB_Renderer
             }
         }
         $config   = [
-            'format'        => 'A4',
+            'format'        => 'A5',
             'margin_left'   => (float) $settings['margin'],
             'margin_right'  => (float) $settings['margin'],
             'margin_top'    => (float) $settings['margin'],
@@ -87,6 +87,14 @@ class HWMB_Renderer
         }
 
         $binary = $mpdf->Output('', 'S');
+        if (! $persist) {
+            $filename = sanitize_file_name(($tokens['{{serial_code}}'] ?? (string) $post_id) . '-manual-book.pdf');
+            return [
+                'binary'   => $binary,
+                'filename' => $filename,
+            ];
+        }
+
         $saved  = $this->files->save_pdf($binary, $tokens['{{serial_code}}'] ?? (string) $post_id);
         $attach = $this->files->attach($saved['path'], $post_id);
         $hash   = hash('sha256', $binary);

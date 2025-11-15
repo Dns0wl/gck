@@ -5,6 +5,7 @@ if (app) {
     meta: { page: 1, pages: 1, perPage: 10 },
     filters: { search: '', material: '', leather: '', date_from: '', date_to: '' },
     loading: false,
+    currentItem: null,
   };
 
   const tpl = document.createElement('div');
@@ -26,6 +27,58 @@ if (app) {
     <div class="hwmb-pagination"></div>
   `;
   app.appendChild(tpl);
+
+  const modal = document.createElement('div');
+  modal.className = 'hwmb-modal';
+  modal.setAttribute('hidden', 'hidden');
+  modal.innerHTML = `
+    <div class="hwmb-modal__card" role="dialog" aria-modal="true">
+      <button class="hwmb-modal__close" type="button" data-modal-close>&times;</button>
+      <h2>Process Manual Book</h2>
+      <p class="hwmb-modal__subtitle" data-modal-product></p>
+      <form class="hwmb-modal__form">
+        <label class="hwmb-modal__field">
+          <span>Customer Name</span>
+          <input type="text" name="customer_name" placeholder="Nama pelanggan" required />
+        </label>
+        <div class="hwmb-modal__field">
+          <span>Date Order (DD/MM/YY)</span>
+          <div class="hwmb-date-options">
+            <label><input type="radio" name="date_mode" value="now" checked /> Now</label>
+            <label><input type="radio" name="date_mode" value="choose" /> Choose</label>
+          </div>
+          <input type="date" name="order_date" class="hwmb-date-picker" data-date-picker />
+        </div>
+        <div class="hwmb-modal__actions">
+          <button type="submit" class="hwmb-button-primary">Submit &amp; Download</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const modalForm = modal.querySelector('form');
+  const modalNameInput = modalForm.querySelector('[name="customer_name"]');
+  const modalDatePicker = modalForm.querySelector('[name="order_date"]');
+  const modalProductLabel = modal.querySelector('[data-modal-product]');
+  const modalSubmitButton = modalForm.querySelector('button[type="submit"]');
+
+  modal.querySelector('[data-modal-close]').addEventListener('click', closeModal);
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) {
+      closeModal();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeModal();
+    }
+  });
+  modalForm.addEventListener('submit', handleProcessSubmit);
+  modalForm.querySelectorAll('input[name="date_mode"]').forEach((input) => {
+    input.addEventListener('change', updateDatePickerVisibility);
+  });
+  updateDatePickerVisibility();
 
   const filterInputs = tpl.querySelectorAll('[data-filter]');
   filterInputs.forEach((input) => {
@@ -85,6 +138,9 @@ if (app) {
       const rebuildBtn = HWMBApp.canBuild
         ? `<button data-rebuild="${item.id}">Rebuild</button>`
         : '';
+      const processBtn = HWMBApp.canBuild
+        ? `<button data-process="${item.id}">Process</button>`
+        : '';
       return `
         <tr>
           <td>${item.title || ''}</td>
@@ -92,7 +148,7 @@ if (app) {
           <td>${item.material || ''}</td>
           <td>${item.leather || ''}</td>
           <td>${item.date || ''}</td>
-          <td class="hwmb-actions">${viewBtn}${downloadBtn}${rebuildBtn}</td>
+          <td class="hwmb-actions">${viewBtn}${downloadBtn}${rebuildBtn}${processBtn}</td>
         </tr>
       `;
     });
@@ -115,6 +171,9 @@ if (app) {
 
     wrapper.querySelectorAll('[data-rebuild]').forEach((btn) => {
       btn.addEventListener('click', () => rebuildItem(btn.dataset.rebuild));
+    });
+    wrapper.querySelectorAll('[data-process]').forEach((btn) => {
+      btn.addEventListener('click', () => openProcessModal(btn.dataset.process));
     });
   }
 
@@ -145,6 +204,145 @@ if (app) {
     }
   }
 
+  function openProcessModal(id) {
+    if (!HWMBApp.canBuild) {
+      return;
+    }
+    const item = state.items.find((entry) => String(entry.id) === String(id));
+    state.currentItem = item || null;
+    modalForm.reset();
+    modalDatePicker.value = '';
+    updateDatePickerVisibility();
+    modalProductLabel.textContent = item ? `${item.title || ''} · Serial ${item.serial || ''}` : '';
+    modal.removeAttribute('hidden');
+    document.body.classList.add('hwmb-modal-open');
+    modalNameInput.focus();
+  }
+
+  function closeModal() {
+    modal.setAttribute('hidden', 'hidden');
+    document.body.classList.remove('hwmb-modal-open');
+    state.currentItem = null;
+    setModalLoading(false);
+  }
+
+  function updateDatePickerVisibility() {
+    const mode = modalForm.date_mode.value;
+    if ('choose' === mode) {
+      modalDatePicker.style.display = 'block';
+      modalDatePicker.required = true;
+    } else {
+      modalDatePicker.style.display = 'none';
+      modalDatePicker.required = false;
+      modalDatePicker.value = '';
+    }
+  }
+
+  function formatDisplayDate(value) {
+    if (!value) {
+      return '';
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    return `${day}/${month}/${year}`;
+  }
+
+  async function handleProcessSubmit(event) {
+    event.preventDefault();
+    if (!state.currentItem) {
+      return;
+    }
+    const customerName = modalNameInput.value.trim();
+    if (!customerName) {
+      modalNameInput.focus();
+      return;
+    }
+    const mode = modalForm.date_mode.value;
+    let finalDate = '';
+    if ('now' === mode) {
+      finalDate = formatDisplayDate(new Date());
+    } else {
+      if (!modalDatePicker.value) {
+        modalDatePicker.focus();
+        return;
+      }
+      finalDate = formatDisplayDate(new Date(modalDatePicker.value));
+    }
+
+    if (!finalDate) {
+      return;
+    }
+
+    const previewWindow = window.open('', '_blank');
+    setModalLoading(true);
+    try {
+      const response = await fetch(`${HWMBApp.rest}/process/${state.currentItem.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': HWMBApp.nonce,
+        },
+        body: JSON.stringify({
+          customer_name: customerName,
+          order_date: finalDate,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Unable to process manual book');
+      }
+      triggerPdfDownload(data.pdf, data.filename, previewWindow);
+      closeModal();
+    } catch (error) {
+      console.error(error);
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.close();
+      }
+      alert('Gagal memproses manual book. Silakan coba lagi.');
+    } finally {
+      setModalLoading(false);
+    }
+  }
+
+  function triggerPdfDownload(base64, filename = 'manual-book.pdf', previewWindow = null) {
+    if (!base64) {
+      return;
+    }
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i += 1) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    if (previewWindow && !previewWindow.closed) {
+      previewWindow.location = url;
+    } else {
+      window.open(url, '_blank');
+    }
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  function setModalLoading(isLoading) {
+    if (!modalSubmitButton) {
+      return;
+    }
+    modalSubmitButton.disabled = Boolean(isLoading);
+    modalSubmitButton.textContent = isLoading ? 'Processing…' : 'Submit & Download';
+  }
+
   function renderPagination() {
     const container = tpl.querySelector('.hwmb-pagination');
     const { page, pages } = state.meta;
@@ -171,10 +369,10 @@ if (app) {
         });
     }
     if (nextBtn) {
-        nextBtn.addEventListener('click', () => {
-            if (state.meta.page < state.meta.pages) {
-                state.meta.page += 1;
-                loadItems();
+      nextBtn.addEventListener('click', () => {
+        if (state.meta.page < state.meta.pages) {
+          state.meta.page += 1;
+          loadItems();
         }
       });
     }

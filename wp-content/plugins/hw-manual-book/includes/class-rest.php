@@ -52,8 +52,20 @@ class HWMB_REST
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => [$this, 'build_item'],
             'permission_callback' => function () {
-                return current_user_can('edit_serialnumbers');
+                return $this->can_manage_manuals();
             },
+        ]);
+
+        register_rest_route('hw-manual/v1', '/process/(?P<id>\d+)', [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => [$this, 'process_item'],
+            'permission_callback' => function () {
+                return $this->can_manage_manuals();
+            },
+            'args'                => [
+                'customer_name' => ['sanitize_callback' => 'sanitize_text_field', 'required' => true],
+                'order_date'    => ['sanitize_callback' => 'sanitize_text_field', 'required' => true],
+            ],
         ]);
     }
 
@@ -141,20 +153,62 @@ class HWMB_REST
         }
     }
 
+    public function process_item(WP_REST_Request $request): WP_REST_Response
+    {
+        $nonce = $request->get_header('X-WP-Nonce');
+        if (! wp_verify_nonce($nonce, 'wp_rest')) {
+            return new WP_REST_Response(['message' => __('Invalid nonce', 'hw-manual-book')], 403);
+        }
+
+        $post_id       = (int) $request['id'];
+        $customer_name = sanitize_text_field((string) $request->get_param('customer_name'));
+        $order_date    = sanitize_text_field((string) $request->get_param('order_date'));
+
+        if (empty($customer_name) || empty($order_date)) {
+            return new WP_REST_Response(['message' => __('Customer name and order date are required.', 'hw-manual-book')], 400);
+        }
+
+        $overrides = [
+            'customer_name' => $customer_name,
+            'order_date'    => $order_date,
+        ];
+
+        try {
+            $result = $this->renderer->build_pdf($post_id, '', $overrides, false);
+            return new WP_REST_Response([
+                'success'  => true,
+                'filename' => $result['filename'] ?? 'manual-book.pdf',
+                'pdf'      => base64_encode($result['binary']),
+            ]);
+        } catch (Throwable $e) {
+            $this->logger->log('REST process failed: ' . $e->getMessage(), 'error');
+            return new WP_REST_Response(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     private function prepare_item(int $post_id): array
     {
         $rel = get_post_meta($post_id, '_hw_manual_pdf_relative', true);
         $settings = $this->files->get_settings();
         $url = $rel ? ('protected' === $settings['mode'] ? $this->files->get_signed_url($rel, DAY_IN_SECONDS) : $this->files->public_url($rel)) : '';
 
+        $serial   = $this->data_source->get_field_value($post_id, ['serial_code', 'serial', 'serialnumber_serial', 'serialnumber'], get_the_title($post_id));
+        $material = $this->data_source->get_field_value($post_id, ['material', 'material_type', 'product_material']);
+        $leather  = $this->data_source->get_field_value($post_id, ['leather_type', 'leather', 'leather_type_name']);
+
         return [
             'id'       => $post_id,
             'title'    => get_the_title($post_id),
-            'serial'   => get_post_meta($post_id, 'serial_code', true),
-            'material' => get_post_meta($post_id, 'material', true),
-            'leather'  => get_post_meta($post_id, 'leather_type', true),
+            'serial'   => $serial,
+            'material' => $material,
+            'leather'  => $leather,
             'date'     => get_the_date('', $post_id),
             'pdf'      => $url,
         ];
+    }
+
+    private function can_manage_manuals(): bool
+    {
+        return current_user_can('edit_serialnumbers') || current_user_can('edit_posts');
     }
 }
